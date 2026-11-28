@@ -76,6 +76,11 @@ export const apiErrorsEn: ApiErrorTexts = {
   plan_limit: 'The limit on plans is reached.',
   not_fixable: 'This kind of problem cannot be fixed here.',
   remote_required: 'This space needs a remote repository first.',
+  partial_unsupported: (p) =>
+    `${p.host ?? 'This host'} cannot sync a part of a repository, and the administrators do not allow a space on a host that cannot.`,
+  no_storage_target:
+    'Your organisation has no storage target yet. Ask its administrators to set one up, or pick another place.',
+  not_implemented: 'This is not available on this server yet.',
   confirm_stale: 'Things changed after the confirmation. Confirm again.',
   confirm_required: 'This feature is in use. Look at what would stop, then confirm.',
 

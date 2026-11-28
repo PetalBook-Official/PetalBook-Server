@@ -751,6 +751,9 @@ func (s *server) createSpace(c *call) {
 		Name    string `json:"name"`
 		Inbox   string `json:"inbox"`
 		Storage *struct {
+			// Mode is where the space is stored (docs/api.md, "Storage modes"):
+			// server, own or tenant; absent is the default in effect.
+			Mode string `json:"mode"`
 			Sync *struct {
 				Provider    string `json:"provider"`
 				Owner       string `json:"owner"`
@@ -785,9 +788,13 @@ func (s *server) createSpace(c *call) {
 		writeError(c.w, http.StatusBadRequest, "invalid", "Give remote or storage.sync, not both.")
 		return
 	}
+	asked := ""
+	if req.Storage != nil {
+		asked = req.Storage.Mode
+	}
 	if r := req.Remote; r != nil {
 		in, err = s.spaces.CreateWithRemote(c.r.Context(), c.user().ID, req.Name, req.Inbox,
-			spaces.ConnectRequest{URL: r.URL, Branch: r.Branch, CredType: r.Credential.Type, Username: r.Credential.Username, Token: r.Credential.Token})
+			spaces.ConnectRequest{URL: r.URL, Branch: r.Branch, CredType: r.Credential.Type, Username: r.Credential.Username, Token: r.Credential.Token, Mode: asked})
 	} else if sync {
 		g := req.Storage.Sync
 		if p, ok := s.registry().Get(g.Provider); !ok || p.Descriptor().Type == connections.GitID {
@@ -798,7 +805,7 @@ func (s *server) createSpace(c *call) {
 			}
 			return
 		}
-		sc := spaces.SyncCreate{Provider: g.Provider, Owner: g.Owner, Name: g.Name, Private: g.Private == nil || *g.Private, Description: g.Description, Create: g.Create == nil || *g.Create}
+		sc := spaces.SyncCreate{Provider: g.Provider, Owner: g.Owner, Name: g.Name, Private: g.Private == nil || *g.Private, Description: g.Description, Create: g.Create == nil || *g.Create, Mode: asked}
 		assets, aerr := assetsAsked(g.Assets)
 		if aerr != nil {
 			s.fail(c.w, aerr)
@@ -807,7 +814,7 @@ func (s *server) createSpace(c *call) {
 		sc.Assets = assets
 		in, err = s.spaces.CreateWithSync(c.r.Context(), c.user().ID, req.Name, req.Inbox, sc)
 	} else {
-		in, err = s.spaces.CreateWith(c.r.Context(), c.user().ID, req.Name, req.Inbox)
+		in, err = s.spaces.CreateWithMode(c.r.Context(), c.user().ID, req.Name, req.Inbox, asked)
 	}
 	if err != nil {
 		s.fail(c.w, err)

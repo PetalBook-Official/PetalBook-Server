@@ -102,6 +102,8 @@ type SyncCreate struct {
 	// Assets asks for an attachment repository made (or found) beside the
 	// space's, with the same owner, visibility and credential; nil asks for none.
 	Assets *SyncAssets
+	// Mode is the storage mode asked for; "" for none.
+	Mode string
 }
 
 // SyncAssets is the attachment repository of a new space on a provider. Default
@@ -121,9 +123,6 @@ func (m *Manager) CreateWithSync(ctx context.Context, userID, name, inbox string
 	if m.single != nil {
 		return Info{}, ErrNotFound
 	}
-	if err := m.CheckNewSpace(ctx, userID, CredConnection, g.Provider); err != nil {
-		return Info{}, err
-	}
 	gh, err := m.provider(g.Provider)
 	if err != nil {
 		return Info{}, err
@@ -135,6 +134,12 @@ func (m *Manager) CreateWithSync(ctx context.Context, userID, name, inbox string
 		return Info{}, err
 	}
 	if name, err = ValidName(name); err != nil {
+		return Info{}, err
+	}
+	if _, err := m.resolveFor(ctx, userID, g.Mode, true); err != nil {
+		return Info{}, err
+	}
+	if err := m.CheckNewSpace(ctx, userID, CredConnection, g.Provider); err != nil {
 		return Info{}, err
 	}
 	if err := m.hostAllowed(gh); err != nil {
@@ -211,6 +216,9 @@ func (m *Manager) CreateWithSync(ctx context.Context, userID, name, inbox string
 	// the owner. One more settings lookup (a map read) per creation.
 	pol, err := m.assetsPolicyOf(ctx, tenantID)
 	if err != nil {
+		return Info{}, err
+	}
+	if err := m.CheckPartial(ctx, tenantID, g.Provider); err != nil {
 		return Info{}, err
 	}
 	assetsOptional := false // a repository the request did not ask for: the space does without one that cannot be had
@@ -553,9 +561,6 @@ func (m *Manager) CreateWithRemote(ctx context.Context, userID, name, inbox stri
 	if req.CredType != CredToken {
 		return Info{}, fmt.Errorf("%w: a new space can be connected with a token; make the space first to use an SSH key", ErrInvalid)
 	}
-	if err := m.CheckNewSpace(ctx, userID, CredToken, store.ProviderGit); err != nil {
-		return Info{}, err
-	}
 	box, err := m.box()
 	if err != nil {
 		return Info{}, err
@@ -589,6 +594,16 @@ func (m *Manager) CreateWithRemote(ctx context.Context, userID, name, inbox stri
 	}
 	if strings.ContainsAny(user, " \t\r\n:\x00") || req.Token == "" || strings.ContainsAny(req.Token, "\r\n\x00") || len(req.Token) > 4096 {
 		return Info{}, fmt.Errorf("%w: the user name or the token is not usable", ErrInvalid)
+	}
+	creator, err := m.resolveFor(ctx, userID, req.Mode, true)
+	if err != nil {
+		return Info{}, err
+	}
+	if err := m.CheckNewSpace(ctx, userID, CredToken, store.ProviderGit); err != nil {
+		return Info{}, err
+	}
+	if err := m.CheckPartialHost(ctx, creator, remote.Host); err != nil {
+		return Info{}, err
 	}
 	// The quota counts the spaces being made as well as the ones that exist;
 	// the space is the creator's tenant's, as Create's is.

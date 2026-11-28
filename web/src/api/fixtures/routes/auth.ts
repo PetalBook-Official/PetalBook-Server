@@ -260,5 +260,22 @@ export const authRoutes: Route[] = [
       spaces: c.data.spaces.map((s) => s.info),
     }),
   ],
-  ['GET', '/api/settings', (c) => ({ features: c.data.features, settings: [] })],
+  [
+    'GET',
+    '/api/settings',
+    (c) => ({
+      features: c.data.features,
+      // Where a new space may be stored: everything is allowed, the server is the default, and the organisation has no
+      // storage target yet (docs/api.md, "Storage modes").
+      settings: [
+        {
+          key: 'storage.mode',
+          effective: 'server',
+          allowed: ['server', 'own', 'tenant'],
+          locked: false,
+          missing: ['tenant'],
+        },
+      ],
+    }),
+  ],
 ]

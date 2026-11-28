@@ -327,6 +327,7 @@ func CloneBytesOfRemoteSpaces(ctx context.Context, q Q) (int64, error) {
 type PolicyFacts struct {
 	Created     time.Time
 	RemoteLost  time.Time // when its GitHub remote was lost; zero if not
+	TenantID    string
 	Personal    bool
 	Exempt      bool   // the space is exempt
 	OwnerExempt bool   // an owner is exempt
@@ -339,11 +340,11 @@ func GetPolicyFacts(ctx context.Context, q Q, id string) (PolicyFacts, error) {
 	var f PolicyFacts
 	var created, exempt, ownerExempt, lost int64
 	var personal sql.NullString
-	err := q.QueryRow(ctx, `SELECT s.created, s.remote_lost_at, s.personal_of, s.exempt,
+	err := q.QueryRow(ctx, `SELECT s.created, s.remote_lost_at, s.personal_of, s.exempt, s.tenant_id,
 		(SELECT COUNT(*) FROM space_members om JOIN users ou ON ou.id = om.user_id WHERE om.space_id = s.id AND om.role = 'owner' AND ou.remote_exempt <> 0),
 		COALESCE((SELECT r.cred_type FROM remotes r WHERE r.space_id = s.id AND r.role = 'content' AND r.url <> '' AND `+usableRemote+`), ''),
 		COALESCE((SELECT r.provider FROM remotes r WHERE r.space_id = s.id AND r.role = 'content' AND r.url <> '' AND `+usableRemote+`), '')
-		FROM spaces s WHERE s.id = ?`, id).Scan(&created, &lost, &personal, &exempt, &ownerExempt, &f.CredType, &f.Provider)
+		FROM spaces s WHERE s.id = ?`, id).Scan(&created, &lost, &personal, &exempt, &f.TenantID, &ownerExempt, &f.CredType, &f.Provider)
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, ErrNotFound
 	}

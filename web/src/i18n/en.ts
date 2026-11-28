@@ -1095,6 +1095,9 @@ export const en: Messages = {
       'The space already has pages or folders, and the remote branch has content of its own; neither history contains the other. PetalBook will not merge the two histories, and nothing was changed.',
     conflictAdvice:
       'What to do: create a new space and connect that one to this repository. It will get the repository’s content directly.',
+    partialTitle: 'This host cannot be used for a space here, so nothing was connected',
+    partialAdvice:
+      'Nothing was changed. Use a repository on another host, or ask your administrators to allow hosts that cannot sync a part of a repository.',
     unreachableTitle: 'The remote could not be reached, so nothing was connected',
     unreachableAdvice:
       'Nothing was changed. Check the address, the network, and whether the token or deploy key has permission, then try again.',

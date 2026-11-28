@@ -1172,17 +1172,29 @@ func (m *Manager) Create(ctx context.Context, userID, name string) (Info, error)
 
 // CreateWith is Create with the inbox folder given ("" is the default).
 func (m *Manager) CreateWith(ctx context.Context, userID, name, inbox string) (Info, error) {
+	return m.CreateWithMode(ctx, userID, name, inbox, "")
+}
+
+// CreateWithMode is CreateWith with the storage mode asked for ("" for none:
+// the default in effect for the creator's tenant, see ResolveMode).
+func (m *Manager) CreateWithMode(ctx context.Context, userID, name, inbox, mode string) (Info, error) {
 	if m.single != nil {
 		return Info{}, errors.New("single-user mode has one space")
-	}
-	if err := m.CheckNewSpace(ctx, userID, "", ""); err != nil {
-		return Info{}, err
 	}
 	if inbox == "" {
 		inbox = store.DefaultInbox
 	}
 	inbox, err := ValidInbox(inbox)
 	if err != nil {
+		return Info{}, err
+	}
+	if _, err := ValidName(name); err != nil {
+		return Info{}, err
+	}
+	if _, err := m.resolveFor(ctx, userID, mode, false); err != nil {
+		return Info{}, err
+	}
+	if err := m.CheckNewSpace(ctx, userID, "", ""); err != nil {
 		return Info{}, err
 	}
 	m.createMu.Lock()

@@ -1053,6 +1053,8 @@ export const zhCN = {
     conflictBody:
       '空间里已经有页面或文件夹，远端分支上也有自己的内容，两边的历史互不包含。PetalBook 不会把两份历史合并在一起，也没有改动任何东西。',
     conflictAdvice: '办法：新建一个空间，再把那个空间连到这个仓库；那个空间会直接拿到仓库里的内容。',
+    partialTitle: '这个空间不能放在这个主机上，没有连接',
+    partialAdvice: '什么也没有改。请换一个别的主机上的仓库，或请管理员允许不支持只同步一部分的主机。',
     unreachableTitle: '连不上远端，没有连接',
     unreachableAdvice: '什么也没有改。请检查地址、网络，以及令牌或部署密钥是否有权限，然后再试。',
     forbiddenTitle: '管理员不允许连接这个主机',

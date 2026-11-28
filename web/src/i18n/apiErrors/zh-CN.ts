@@ -68,6 +68,9 @@ export const apiErrorsZhCN: ApiErrorTexts = {
   tenant_not_empty: '这个组织里还有用户、空间、组、邀请或回收站里的内容，不能直接移走。',
   not_fixable: '这种问题不能在这里修复。',
   remote_required: '这个空间需要先连接远程仓库。',
+  partial_unsupported: (p) => `${p.host ?? '这个主机'}不支持只同步仓库的一部分，管理员不允许空间放在这样的主机上。`,
+  no_storage_target: '你的组织还没有存储目标。请让组织管理员先设置，或选择别的存放位置。',
+  not_implemented: '这台服务器暂时还不支持这个功能。',
   confirm_stale: '确认之后情况有变化，请重新确认。',
   confirm_required: '这个功能正在使用中。请先看会停止什么，再确认。',
 

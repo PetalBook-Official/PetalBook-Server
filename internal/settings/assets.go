@@ -62,6 +62,12 @@ func (s *Service) AssetsRule(ctx context.Context, tenant string, in AssetsInput)
 			}
 		}
 	}
+	return choiceRule(d, value, below, by), nil
+}
+
+// choiceRule is what a lower layer may pick of a choice setting, given its value
+// in effect, the rule below it and the layer whose lock leaves no choice.
+func choiceRule(d *Def, value any, below Lower, by Layer) AssetsRule {
 	v, _ := value.(string)
 	var r AssetsRule
 	for _, c := range d.Choices {
@@ -76,5 +82,23 @@ func (s *Service) AssetsRule(ctx context.Context, tenant string, in AssetsInput)
 		v = r.Allowed[0]
 	}
 	r.Default = v
-	return r, nil
+	return r
+}
+
+// StorageModeRule is where a new space of the tenant ("" for the site alone)
+// may be stored, by the layers of StorageMode: Allowed are the modes the person
+// who makes the space may pick, Default the one a request that does not say
+// gets. A lock leaves only the locked value.
+func (s *Service) StorageModeRule(ctx context.Context, tenant string) (AssetsRule, error) {
+	e, err := s.Get(ctx, tenant, StorageMode)
+	if err != nil {
+		return AssetsRule{}, err
+	}
+	return ModeRuleOf(e), nil
+}
+
+// ModeRuleOf is the rule of an effective StorageMode (the site's own, from
+// Service.Site, or a tenant's).
+func ModeRuleOf(e *Effective) AssetsRule {
+	return choiceRule(e.Def, e.Value, e.Below, e.LockedBy)
 }

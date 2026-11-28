@@ -92,6 +92,8 @@ type ConnectRequest struct {
 	// A connection: Provider is the provider's id, Via is "app" or "user" (or ""
 	// to let the server choose, for a new space), UserID the caller.
 	Provider, Via, UserID string
+	// Mode is the storage mode asked for a new space (CreateWithRemote); "" for none.
+	Mode string
 }
 
 func (m *Manager) knownHosts(id string) string {
@@ -406,6 +408,15 @@ func (m *Manager) sameTenant(ctx context.Context, provider, tenantID, userID str
 	return err
 }
 
+// spaceTenant is the tenant a space belongs to.
+func (m *Manager) spaceTenant(ctx context.Context, id string) (string, error) {
+	sp, err := store.GetSpace(ctx, m.opt.Store.Q(), store.AllTenants(), id) // the space the caller has open, by id
+	if err != nil {
+		return "", err
+	}
+	return sp.TenantID, nil
+}
+
 // providerOf is the provider a connect request goes through: its own for a
 // connection, "git" for a plain address.
 func providerOf(req ConnectRequest) string {
@@ -436,6 +447,9 @@ func (m *Manager) Connect(ctx context.Context, h *Handle, req ConnectRequest) (*
 		if err != nil {
 			return nil, err
 		}
+		if err := m.CheckPartial(ctx, sp.TenantID, req.Provider); err != nil {
+			return nil, err
+		}
 		if req.Via == connections.ViaUser {
 			if err := m.sameTenant(ctx, req.Provider, sp.TenantID, req.UserID); err != nil {
 				return nil, err
@@ -444,8 +458,17 @@ func (m *Manager) Connect(ctx context.Context, h *Handle, req ConnectRequest) (*
 		if remote, ghCred, err = m.resolveConnection(ctx, connections.ScopeOfSpace(sp.TenantID, sp.Personal), req); err != nil {
 			return nil, err
 		}
-	} else if remote, err = gitstore.ParseURL(req.URL, m.hostPolicy()); err != nil {
-		return nil, err
+	} else {
+		if remote, err = gitstore.ParseURL(req.URL, m.hostPolicy()); err != nil {
+			return nil, err
+		}
+		tenant, err := m.spaceTenant(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if err := m.CheckPartialHost(ctx, tenant, remote.Host); err != nil {
+			return nil, err
+		}
 	}
 	branch := strings.TrimSpace(req.Branch)
 	if branch == "" {

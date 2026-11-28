@@ -39,6 +39,12 @@ export const githubZhCN: GitHubMessages = {
     whereServerHelp: '空间只存在这台服务器上。',
     whereSync: (name: string) => `同步到 ${name}`,
     whereOther: '其他（按地址）',
+    whereTenant: '组织的存储位置',
+    whereTenantHelp: '服务器会在组织设置好的位置为这个空间建一个仓库。',
+    addressNeedsServer: '管理员要求空间一开始就同步到远端，所以不能先建空间再填地址：请选择一个平台。',
+    noPlatform: '管理员要求空间一开始就同步到远端，而这台服务器上还没有设置可以同步的平台。',
+    noPlace: '管理员目前没有给你留下可以存放新空间的位置。',
+    whereTenantMissing: '你的组织还没有设置存储目标。',
     whereOtherHelp: '先在这台服务器上建好空间，再到它的同步设置里填写同步的地址。',
     errors: {
       nameTaken: '这个所有者下已经有同名的了。',

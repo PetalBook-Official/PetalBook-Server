@@ -199,6 +199,7 @@ export function errorParams(code: string, body: unknown, retryAfter: number | un
     size: bytes(b.size),
     name: str(b.name),
     provider: str(b.provider),
+    host: str(b.host),
     permission: str(b.permission),
     header: str(b.header),
     field: str(b.field),
@@ -976,10 +977,16 @@ export const api = {
   // --- spaces ---
   spaces: (signal?: AbortSignal) => request<{ spaces: SpaceInfo[] }>('/spaces', { signal }),
   // `sync` makes the space's repository on a provider too (docs/api.md, "Spaces and remotes").
-  createSpace: (name: string, inbox?: string, sync?: NewSync) =>
+  createSpace: (name: string, inbox?: string, sync?: NewSync, mode?: 'server' | 'own' | 'tenant') =>
     request<SpaceInfo>('/spaces', {
       method: 'POST',
-      body: { name, ...(inbox === undefined ? {} : { inbox }), ...(sync === undefined ? {} : { storage: { sync } }) },
+      body: {
+        name,
+        ...(inbox === undefined ? {} : { inbox }),
+        ...(sync === undefined && mode === undefined
+          ? {}
+          : { storage: { ...(mode === undefined ? {} : { mode }), ...(sync === undefined ? {} : { sync }) } }),
+      },
     }),
 
   // --- repositories at a provider (accounts mode; docs/api.md, "Linked accounts") ---

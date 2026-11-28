@@ -276,6 +276,14 @@ func New(opt Options) *Handler {
 		opt.Connections = connections.NewRegistry(append(ps, connections.NewGit())...)
 	}
 	wireLoss()
+	// The requirement of a remote as the settings now make it (a rule on
+	// storage.mode written before this server started, say) begins its grace
+	// period now, not when the rule was written.
+	if opt.Spaces != nil {
+		if err := opt.Spaces.SettlePolicy(context.Background()); err != nil && opt.Logger != nil {
+			opt.Logger.Error("could not settle when the remote requirement took its form", "error", err)
+		}
+	}
 	// The GitHub row is both a sign-in provider and where repositories are
 	// connected: sign-in reads it again when the App changes, and connecting
 	// repositories with another account never takes a person's last way in.
@@ -664,6 +672,8 @@ type errorBody struct {
 	Current any    `json:"current,omitempty"`
 	// Provider is the id of the provider an error of a connection is about.
 	Provider string `json:"provider,omitempty"`
+	// Host is the host a refused connection is about (partial_unsupported).
+	Host string `json:"host,omitempty"`
 	// Repo is the empty repository a failed space creation left on the platform.
 	Repo *repoRefResp `json:"repo,omitempty"`
 	// AssetsRepo is the attachment repository made with the space's (milestone 3.1).
@@ -816,6 +826,7 @@ func (s *server) fail(w http.ResponseWriter, err error) {
 	var coded *codedError
 	var ghe *connections.Error
 	var req *spaces.RequiredError
+	var pue *spaces.PartialUnsupportedError
 	var full *spaces.SpaceFullError
 	var setErr *settings.Error
 	var secErr *secrets.Error
@@ -855,6 +866,12 @@ func (s *server) fail(w http.ResponseWriter, err error) {
 			body.Deadline = rfc3339(req.Deadline)
 		}
 		writeJSON(w, http.StatusConflict, body)
+	case errors.As(err, &pue):
+		writeJSON(w, http.StatusConflict, errorBody{Error: "partial_unsupported", Message: pue.Error(), Provider: pue.Provider, Host: pue.Host})
+	case errors.Is(err, spaces.ErrNoStorageTarget):
+		writeError(w, http.StatusConflict, "no_storage_target", "This organization has no storage target to make a space at: ask its administrators to set one up, or pick another storage mode.")
+	case errors.Is(err, spaces.ErrTargetNotBuilt):
+		writeError(w, http.StatusNotImplemented, "not_implemented", err.Error()+".")
 	case errors.As(err, &full):
 		writeError(w, http.StatusInsufficientStorage, "space_full", full.Error())
 	case errors.As(err, &nc):

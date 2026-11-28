@@ -294,7 +294,8 @@ func (s *server) adminPutSetting(c *call) {
 	if ch.HasLower {
 		out.Affected = &affected
 	}
-	if ch.HasValue && strings.HasPrefix(key, "storage.remotes.") && s.spaces != nil {
+	// storage.mode's modes allowed derive the requirement when none is set.
+	if (ch.HasValue && (strings.HasPrefix(key, "storage.remotes.") || key == settings.StorageHosts) || key == settings.StorageMode && (ch.HasValue || ch.HasLower)) && s.spaces != nil {
 		// The requirement changed: what is cached of it goes, the people's counts
 		// follow it.
 		aff, err := s.spaces.StoragePolicyChanged(ctx)
@@ -480,6 +481,9 @@ func (s *server) mySettings(c *call) {
 		// and whether a lock leaves them no choice.
 		Allowed []string `json:"allowed,omitempty"`
 		Locked  *bool    `json:"locked,omitempty"`
+		// Missing, for storage.mode, are the allowed modes that cannot be used
+		// now (tenant, while the organization has no storage target).
+		Missing []string `json:"missing,omitempty"`
 	}
 	out := []item{}
 	features := map[string]bool{}
@@ -496,6 +500,15 @@ func (s *server) mySettings(c *call) {
 			}
 			locked := r.LockedBy != ""
 			out = append(out, item{Key: d.Key, Effective: r.Default, Allowed: r.Allowed, Locked: &locked})
+			continue
+		}
+		if d.Key == settings.StorageMode && s.spaces != nil {
+			r, err := s.spaces.ModeRule(ctx, c.tenant())
+			if err != nil {
+				s.fail(c.w, err)
+				return
+			}
+			out = append(out, item{Key: d.Key, Effective: r.Default, Allowed: r.Allowed, Locked: &r.Locked, Missing: r.Missing})
 			continue
 		}
 		if !d.Has(settings.Space) && !d.Has(settings.Person) || strings.HasPrefix(d.Key, "quota.") {

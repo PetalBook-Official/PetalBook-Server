@@ -533,7 +533,7 @@ export const tenantsEn: TenantsMessages = {
       'storage.assets.ownStorageExempt':
         "On (the default): a space whose owner stores it on their own storage is exempt from the site's rule for where attachments go, so its owner decides. Off: the site's default or lock applies to those spaces too. Storage targets of their own arrive with 3.6; until then the switch is only stored.",
       'storage.partial.unsupported':
-        'What happens when a space is connected to a remote that cannot sync partially. Allow (the default): the space is cloned in full. Refuse: connecting it is refused; spaces already connected keep working. Refuse is the stricter. Not in effect yet.',
+        'What happens when a space is connected to a remote that cannot sync partially. Allow (the default): the space is cloned in full. Refuse: connecting it is refused; spaces already connected keep working. Refuse is the stricter. A host not found out yet is let through.',
       'mail.useSite':
         "On (the default): an organisation with no mail sender of its own sends through the site's, under the organisation's name. Off: it sends nothing until it sets one up. To force it off, the site must lock it off (for all, or by a rule for one organisation); an off that is not locked can be turned back on by the organisation. Not in effect yet.",
       'daily.useSiteApis':

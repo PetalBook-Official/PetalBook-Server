@@ -43,8 +43,9 @@ export interface NewSpaceThen {
   openSync: boolean
 }
 
-// The "where" of the option "other (by address)".
+// The "where" of the option "other (by address)" and of the organisation's own storage target.
 const OTHER = '*address'
+const TENANT = '*tenant'
 
 interface Left {
   fullName: string
@@ -82,27 +83,60 @@ function NewSpaceForm({
   // The platforms a space can be synced to: set up, and able to make a place for it.
   const providers = (connections.data?.providers ?? []).filter((p) => p.configured && p.capabilities.createRepo)
   const [name, setName] = useState('')
-  // Where the space is stored: '' is this server, else the id of a provider, or OTHER for a plain address given afterwards.
-  const [where, setWhere] = useState('')
-  const provider = providers.find((p) => p.id === where) ?? null
-  const useRepo = provider !== null
+  // Where the space is stored, once the person picks: '' is this server, else the id of a provider, OTHER for a plain
+  // address given afterwards, or TENANT for the organisation's storage target. Until then the default decides.
+  const [picked, setWhere] = useState<string | null>(null)
   // What the settings say a new space's attachments do for this person: the default, what they may ask for, and
   // whether a lock (or a rule allowing only one answer) leaves no choice. null until it is read; the box is then hidden.
   const rule = useQuery({
     queryKey: ['settings', 'new-space-assets'],
     staleTime: 30_000,
     queryFn: async ({ signal }) => {
-      const found = (await api.settings(undefined, signal)).settings.find((x) => x.key === 'storage.assets')
+      const all = (await api.settings(undefined, signal)).settings
+      const found = all.find((x) => x.key === 'storage.assets')
+      // Where the settings let a new space be stored (storage.mode): the modes allowed, the default, and the ones that
+      // cannot be used now. Absent: the server says nothing, and the choice is as before.
+      const mode = all.find((x) => x.key === 'storage.mode')
+      const modes = mode
+        ? {
+            default: String(mode.effective),
+            allowed: mode.allowed ?? [],
+            missing: mode.missing ?? [],
+          }
+        : undefined
       return found
         ? {
             on: found.effective === 'repository',
             canRepo: !!found.allowed?.includes('repository'),
             // No choice either when the site allows only a repository of their own without locking it.
             locked: !!found.locked || !found.allowed?.includes('space'),
+            modes,
           }
-        : { on: false, canRepo: true, locked: false }
+        : { on: false, canRepo: true, locked: false, modes }
     },
   }).data
+  // What the modes allow: the server's disk, a remote of their own (a platform, or an address), the organisation's target.
+  const modes = rule?.modes
+  const canServer = !modes || modes.allowed.includes('server')
+  const canOwn = !modes || modes.allowed.includes('own')
+  const canTenant = !!modes?.allowed.includes('tenant')
+  const tenantMissing = !!modes?.missing.includes('tenant')
+  const shownProviders = canOwn ? providers : []
+  // The default's place, then the first place left when it is not one.
+  const places = [
+    ...(canServer ? [''] : []),
+    ...shownProviders.map((p) => p.id),
+    // A plain address is given after the space exists, so it is no way in where the server is not allowed.
+    ...(canOwn && canServer && providers.length > 0 ? [OTHER] : []),
+    ...(canTenant && !tenantMissing ? [TENANT] : []),
+  ]
+  const defaultWhere = (() => {
+    const want = modes?.default === 'own' ? (shownProviders[0]?.id ?? OTHER) : modes?.default === 'tenant' ? TENANT : ''
+    return places.includes(want) ? want : (places[0] ?? '')
+  })()
+  const where = picked !== null && places.includes(picked) ? picked : defaultWhere
+  const provider = shownProviders.find((p) => p.id === where) ?? null
+  const useRepo = provider !== null
   // The owner's own choice, once they touch the box; until then nothing is sent and the default decides.
   const [assetsChoice, setAssetsChoice] = useState<boolean | null>(null)
   const withAssets = assetsChoice ?? rule?.on ?? false
@@ -161,8 +195,16 @@ function NewSpaceForm({
     setLeft(null)
     setTaken(false)
     try {
+      const mode = where === '' ? ('server' as const) : where === TENANT ? ('tenant' as const) : ('own' as const)
       // A Chinese-language app names the inbox folder in Chinese.
-      const space = await create.mutateAsync({ name: trimmed, inbox: t.inbox.folderName, ...(gh ? { sync: gh } : {}) })
+      const space = await create.mutateAsync({
+        name: trimmed,
+        inbox: t.inbox.folderName,
+        ...(gh ? { sync: gh } : {}),
+        // Said only where the server could not tell from the request: a space with a repository is "own", and the
+        // default is what a request that does not say gets.
+        ...(modes && !gh && mode !== modes.default ? { mode } : {}),
+      })
       onCreated(space, where === OTHER ? { openSync: true } : undefined)
       onClose()
     } catch (err) {
@@ -246,23 +288,25 @@ function NewSpaceForm({
           autoComplete="off"
         />
 
-        {providers.length > 0 && (
+        {(places.length > 1 || (!canServer && canOwn && places.length > 0)) && (
           <fieldset className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border p-3">
             <legend className="px-1 text-xs text-muted-foreground">{tg.newSpace.legend}</legend>
-            <label className="flex cursor-pointer items-start gap-2 text-sm">
-              <input
-                type="radio"
-                name="new-space-where"
-                className="mt-1 accent-[var(--brand)]"
-                checked={where === ''}
-                onChange={() => setWhere('')}
-              />
-              <span className="min-w-0">
-                <span className="block font-medium">{tg.newSpace.whereServer}</span>
-                <span className="block text-xs text-muted-foreground">{tg.newSpace.whereServerHelp}</span>
-              </span>
-            </label>
-            {providers.map((p) => (
+            {canServer && (
+              <label className="flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="new-space-where"
+                  className="mt-1 accent-[var(--brand)]"
+                  checked={where === ''}
+                  onChange={() => setWhere('')}
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium">{tg.newSpace.whereServer}</span>
+                  <span className="block text-xs text-muted-foreground">{tg.newSpace.whereServerHelp}</span>
+                </span>
+              </label>
+            )}
+            {shownProviders.map((p) => (
               <label key={p.id} className="flex cursor-pointer items-start gap-2 text-sm">
                 <input
                   type="radio"
@@ -280,19 +324,41 @@ function NewSpaceForm({
                 </span>
               </label>
             ))}
-            <label className="flex cursor-pointer items-start gap-2 text-sm">
-              <input
-                type="radio"
-                name="new-space-where"
-                className="mt-1 accent-[var(--brand)]"
-                checked={where === OTHER}
-                onChange={() => setWhere(OTHER)}
-              />
-              <span className="min-w-0">
-                <span className="block font-medium">{tg.newSpace.whereOther}</span>
-                <span className="block text-xs text-muted-foreground">{tg.newSpace.whereOtherHelp}</span>
-              </span>
-            </label>
+            {places.includes(OTHER) && (
+              <label className="flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="new-space-where"
+                  className="mt-1 accent-[var(--brand)]"
+                  checked={where === OTHER}
+                  onChange={() => setWhere(OTHER)}
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium">{tg.newSpace.whereOther}</span>
+                  <span className="block text-xs text-muted-foreground">{tg.newSpace.whereOtherHelp}</span>
+                </span>
+              </label>
+            )}
+            {!canServer && canOwn && (
+              <p className="text-xs break-words text-muted-foreground">
+                {shownProviders.length > 0 ? tg.newSpace.addressNeedsServer : tg.newSpace.noPlatform}
+              </p>
+            )}
+            {places.includes(TENANT) && (
+              <label className="flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="new-space-where"
+                  className="mt-1 accent-[var(--brand)]"
+                  checked={where === TENANT}
+                  onChange={() => setWhere(TENANT)}
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium">{tg.newSpace.whereTenant}</span>
+                  <span className="block text-xs text-muted-foreground">{tg.newSpace.whereTenantHelp}</span>
+                </span>
+              </label>
+            )}
 
             {useRepo && (
               <div className="grid min-w-0 grid-cols-1 gap-3">
@@ -456,6 +522,11 @@ function NewSpaceForm({
           </fieldset>
         )}
 
+        {places.length === 0 && (
+          <p role="alert" className="rounded-md border border-warning/50 bg-warning/5 px-3 py-2 text-sm break-words">
+            {tenantMissing ? tg.newSpace.whereTenantMissing : tg.newSpace.noPlace}
+          </p>
+        )}
         {left && (
           <div
             role="alert"
@@ -498,7 +569,7 @@ function NewSpaceForm({
           <Button type="button" variant="outline" onClick={onClose}>
             {t.spaces.cancel}
           </Button>
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || places.length === 0}>
             {busy && <Spinner />}
             {busy && useRepo ? tg.newSpace.creating : t.spaces.create}
           </Button>

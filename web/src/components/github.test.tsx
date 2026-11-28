@@ -54,6 +54,8 @@ async function openNewSpace(
   github: 'off' | 'app' | 'connected',
   rule?: Parameters<typeof assetsRule>[1],
   scene: (d: FixtureServer['data']) => void = () => {},
+  // What storage.mode says to this person (the places a new space may be stored).
+  mode?: Record<string, unknown>,
 ) {
   const created: SpaceInfo[] = []
   m = await mount(<Harness onCreated={(s) => created.push(s)} />, {
@@ -67,6 +69,11 @@ async function openNewSpace(
     },
     entries: (fx) => {
       if (rule) assetsRule(fx, rule)
+      if (mode)
+        fx.reply('GET', '/api/settings', {
+          features: fx.data.features,
+          settings: [{ key: 'storage.mode', locked: false, ...mode }],
+        })
       return ['/']
     },
   })
@@ -362,6 +369,88 @@ describe('the new-space dialog', () => {
     await settle(() => text().includes(tg.newSpace.errors.missingPermission(['administration'])), 'the message')
   })
 
+  it('offers only the places the settings allow, and starts at the default', async () => {
+    // Only a remote of their own: no choice of this server, and the platform is where it starts.
+    await openNewSpace('connected', undefined, () => {}, { effective: 'own', allowed: ['own'] })
+    await settle(() => text().includes(tg.newSpace.whereSync('GitHub')), 'the option')
+    expect(text()).not.toContain(tg.newSpace.whereServerHelp)
+    // A plain address is given after the space is made, which a remote that must be there from the start cannot wait for.
+    expect(text()).not.toContain(tg.newSpace.whereOtherHelp)
+    expect(text()).toContain(tg.newSpace.addressNeedsServer)
+    expect(checkbox(tg.newSpace.whereSync('GitHub')).checked).toBe(true)
+  })
+
+  it('offers the organisation storage when it can be used, and says nothing when it is the default', async () => {
+    const created = await openNewSpace('off', undefined, () => {}, {
+      effective: 'tenant',
+      allowed: ['server', 'tenant'],
+    })
+    m!.fx.reply(
+      'POST',
+      '/api/spaces',
+      { ...m!.fx.data.spaces[0].info, id: '01FZTENANT', name: 'Team' },
+      { status: 201 },
+    )
+    await settle(() => text().includes(tg.newSpace.whereTenant), 'the organisation option')
+    expect(checkbox(tg.newSpace.whereTenant).checked).toBe(true)
+    await type(nameField(), 'Team')
+    await click(button(t.spaces.create))
+    await settle(() => created.length === 1, 'the space')
+    expect(JSON.parse(posts()[0]!.body!)).toEqual({ name: 'Team', inbox: t.inbox.folderName })
+    await settle(() => dialog() === null, 'the dialog closing')
+  })
+
+  it('says the mode when the person picks one other than the default', async () => {
+    const created = await openNewSpace('off', undefined, () => {}, {
+      effective: 'tenant',
+      allowed: ['server', 'own', 'tenant'],
+    })
+    m!.fx.reply(
+      'POST',
+      '/api/spaces',
+      { ...m!.fx.data.spaces[0].info, id: '01FZSERVER', name: 'Local' },
+      { status: 201 },
+    )
+    await settle(() => text().includes(tg.newSpace.whereTenant), 'the organisation option')
+    await click(checkbox(tg.newSpace.whereServer))
+    await type(nameField(), 'Local')
+    await click(button(t.spaces.create))
+    await settle(() => created.length === 1, 'the space')
+    expect(JSON.parse(posts()[0]!.body!).storage).toEqual({ mode: 'server' })
+  })
+
+  it('says what is available, not "pick a platform", when no platform is set up', async () => {
+    await openNewSpace('off', undefined, () => {}, { effective: 'tenant', allowed: ['own', 'tenant'] })
+    await settle(() => text().includes(tg.newSpace.whereTenant), 'the organisation option')
+    expect(text()).toContain(tg.newSpace.noPlatform)
+    expect(text()).not.toContain(tg.newSpace.addressNeedsServer)
+  })
+
+  it('hides a mode that cannot be used now, and says so when nothing is left', async () => {
+    await openNewSpace('off', undefined, () => {}, {
+      effective: 'tenant',
+      allowed: ['tenant'],
+      locked: true,
+      missing: ['tenant'],
+    })
+    await settle(() => text().includes(tg.newSpace.whereTenantMissing), 'the notice')
+    expect(text()).not.toContain(tg.newSpace.whereServerHelp)
+    expect(button(t.spaces.create)!.disabled).toBe(true)
+  })
+
+  it('shows why a refused place was refused, in words', async () => {
+    const created = await openNewSpace('connected')
+    m!.fx.fail('POST', '/api/spaces', 409, { code: 'partial_unsupported', host: 'git.example.test' })
+    await settle(() => text().includes(tg.newSpace.whereSync('GitHub')), 'the option')
+    await type(nameField(), 'Refused')
+    await click(checkbox(tg.newSpace.whereSync('GitHub')))
+    await settle(() => dialog()!.querySelector('select') !== null, 'the owners')
+    await click(button(t.spaces.create))
+    await settle(() => text().includes('git.example.test'), 'the reason')
+    expect(created).toHaveLength(0)
+    expect(dialog()!.querySelector('[role="alert"]')!.textContent).toContain('git.example.test')
+  })
+
   it('fits a phone: one column, fields that may shrink, long names that break', async () => {
     await openNewSpace('connected')
     await settle(() => text().includes(tg.newSpace.whereSync('GitHub')), 'the option')
@@ -624,6 +713,19 @@ describe('the sync settings of a space', () => {
     await follow(appRemote())
     await settle(() => panel()!.textContent!.includes(tg.sync.viaAppOf('kazuhahub')), 'the connected remote')
     expect(panel()!.textContent).not.toMatch(/ghs_|ghu_|token/i)
+  })
+
+  it('says why a host that cannot sync partially was refused, and what to do', async () => {
+    await openSync()
+    m!.fx.fail('PUT', remotePath, 409, { code: 'partial_unsupported', host: 'git.example.test' })
+    await click(radio(tg.sync.github))
+    await settle(() => panel()!.textContent!.includes(tg.sync.viaApp), 'the choices')
+    await type(panel()!.querySelector<HTMLInputElement>('input[inputmode="url"]')!, 'kazuhahub/wiki')
+    await click(button(t.remote.connect, panel()!))
+    await settle(() => panel()!.textContent!.includes(t.remote.partialTitle), 'the reason')
+    expect(panel()!.textContent).toContain('git.example.test')
+    expect(panel()!.textContent).toContain(t.remote.partialAdvice)
+    expect(panel()!.textContent).not.toContain(t.remote.conflictTitle)
   })
 
   it("can switch to the user's own connection, and chooses a repository from a list", async () => {

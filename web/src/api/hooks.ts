@@ -757,7 +757,9 @@ export function useCreateSpace() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: string | CreateSpaceInput) =>
-      typeof input === 'string' ? api.createSpace(input) : api.createSpace(input.name, input.inbox, input.sync),
+      typeof input === 'string'
+        ? api.createSpace(input)
+        : api.createSpace(input.name, input.inbox, input.sync, input.mode),
     // Another space, in the same list order the server gives: personal first, then by name.
     onSuccess: (space, input) => {
       qc.setQueryData<{ spaces: SpaceInfo[] }>(keys.spaces, (prev) => ({

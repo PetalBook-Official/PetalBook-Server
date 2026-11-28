@@ -168,3 +168,16 @@ func DeleteStorageTarget(ctx context.Context, q Q, id string) error {
 	_, err := q.Exec(ctx, `DELETE FROM storage_targets WHERE id = ?`, id)
 	return err
 }
+
+// HasUsableStorageTarget reports whether new spaces of the tenant have a
+// storage target to go to: the tenant's own target in use, or a site target
+// shared with it, that has not failed its check. One indexed query.
+func HasUsableStorageTarget(ctx context.Context, q Q, tenantID string) (bool, error) {
+	var one int
+	err := q.QueryRow(ctx, `SELECT 1 FROM storage_targets WHERE in_use <> 0 AND state <> ?
+		AND (owner = ? OR id IN (SELECT target_id FROM storage_target_shares WHERE tenant_id = ?)) LIMIT 1`, TargetBroken, tenantID, tenantID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}

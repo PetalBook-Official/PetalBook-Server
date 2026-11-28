@@ -1004,9 +1004,14 @@ func TestARequirementOfGitHubRefusesAnyOtherCredentialAndTightening(t *testing.T
 			t.Fatalf("a new grace period moved since: %v -> %v", s1, s2)
 		}
 		f.clk.Advance(time.Hour)
-		setRequire(t, f.m, "any", "new", 20) // scope changed: a new since
-		if s3 := f.m.Storage().Remotes.Since; !s3.After(s1) {
-			t.Fatalf("a changed scope kept since: %v", s3)
+		setRequire(t, f.m, "any", "new", 20) // narrowed: the spaces it covered stay covered, since stays
+		if s3 := f.m.Storage().Remotes.Since; !s3.Equal(s1) {
+			t.Fatalf("narrowing the scope moved since: %v -> %v", s1, s3)
+		}
+		f.clk.Advance(time.Hour)
+		setRequire(t, f.m, "any", "all", 20) // widened: a new since
+		if s4 := f.m.Storage().Remotes.Since; !s4.After(s1) {
+			t.Fatalf("widening the scope kept since: %v", s4)
 		}
 		_ = in
 	})

@@ -759,6 +759,8 @@ export interface CreateSpaceInput {
   name: string
   inbox?: string
   sync?: NewSync
+  // Where the space is stored (`storage.mode`); left out, the default in effect (or "own" for a space with a remote).
+  mode?: 'server' | 'own' | 'tenant'
 }
 
 // The settings of the server's one GitHub App as an administrator sees them: never a secret.
@@ -945,6 +947,9 @@ export type ErrorCode =
   | 'personal_space'
   | 'busy'
   | 'remote_required'
+  | 'partial_unsupported'
+  | 'no_storage_target'
+  | 'not_implemented'
   | 'not_cached'
   | 'restoring'
   | 'space_full'
@@ -2438,6 +2443,8 @@ export interface MySetting {
   // storage.assets only: what a person may ask for when they make a space, and whether a lock leaves no choice.
   allowed?: string[]
   locked?: boolean
+  // storage.mode only: the allowed modes that cannot be used now ("tenant" while the organisation has no storage target).
+  missing?: string[]
 }
 
 // --- storage management (docs/api.md, "Storage management") --------------------------------

@@ -558,6 +558,14 @@ function Problem({ error }: { error: unknown }) {
         )}
       </div>
     )
+  if (e?.code === 'partial_unsupported')
+    return (
+      <div role="alert" className="grid gap-1 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+        <p className="font-medium">{t.remote.partialTitle}</p>
+        <p className="break-words">{e.message}</p>
+        <p className="text-muted-foreground">{t.remote.partialAdvice}</p>
+      </div>
+    )
   if (e?.status === 409)
     return (
       <div role="alert" className="grid gap-1 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">

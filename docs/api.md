@@ -7292,6 +7292,15 @@ box from `effective`, sends `storage.sync.assets` only when the person changes
 it, disables the box when `locked`, and hides it when `allowed` has no
 `repository`.
 
+`storage.mode` is in the list too, as `{"key": "storage.mode", "effective":
+"server", "allowed": ["server", "own", "tenant"], "locked": false, "missing":
+["tenant"]}`: the default a new space of the caller's tenant gets, the modes its
+creator may pick (see "Storage modes"), whether a lock leaves no choice, and the
+allowed modes that cannot be used now (`tenant` while the organisation has no
+storage target). The new-space dialog offers only what is allowed and usable,
+starts at `effective`, and sends `storage.mode` only when the person picks
+another; a space made with a repository is `own` without being told.
+
 ### Mail
 
 Site administrators. Outgoing mail is what verification, password reset and
@@ -9845,11 +9854,12 @@ Notes:
   3.1 does; the site may loosen each to `allow` (the site's value is a default)
   or lock it. 3.1's `storage.remotes.require` is derived from `storage.mode`
   (see "Storage modes").
-- The keys `storage.partial.unsupported`, `mail.useSite`, `daily.useSiteApis`,
+- The keys `mail.useSite`, `daily.useSiteApis`,
   `connections.useSiteApps`, `outbound.perMinute` and `outbound.tenantPerMinute`
   are in the registry, with their defaults, before the features that read them
   are built; until then nothing reads them (their help says "not in effect
-  yet"). The three `useSite` switches default to on, which is what a tenant
+  yet"). `storage.mode` and `storage.partial.unsupported` are read (see "Storage
+  modes" and the note below). The three `useSite` switches default to on, which is what a tenant
   gets today. A site administrator who wants one off for a tenant has to
   **lock** it off (a rule for the tenant, or the site's lock): an off that is
   not locked is only a default, and the tenant's administrators can turn it
@@ -9857,8 +9867,20 @@ Notes:
 - `storage.partial.unsupported` (owner, 2026-11-23) is the only partial-sync
   policy. With `refuse`, connecting a space to a host that 3.5's detection found
   unable to filter (`partialSync: "no"`) answers `409 partial_unsupported` with
-  `host`; a host not yet detected is detected first. Spaces already connected
-  keep working. With `allow` they are cloned in full.
+  `host` and `provider`. It is read at connect time, for the space's tenant (the
+  tenant's value, else the site's), for every way of connecting a space to a
+  provider: `PUT …/remote` with a `connection` credential and a new space made
+  with `storage.sync` (nothing is made on the host). It applies to every space,
+  not only those that need partial sync, and whether or not the server clones
+  partially. A remote given as a plain address (`remote` with a token, or `PUT …/remote` without a
+  `connection`) whose host is a provider's (compared as host names: lower case, no
+  port, no trailing dot, IDNA's ASCII form) is held to what is known of that
+  provider, so an address does not get round the policy. A host not found out yet
+  (`unknown`), and an address no provider has, is let through; the detection of 3.5 fills it in as the
+  provider is used. **Nothing is migrated**: a space that is connected already
+  keeps its remote and keeps syncing when the policy turns to `refuse`; only a
+  new connection (also reconnecting, or changing the remote) is looked at. With
+  `allow` they are cloned in full.
 - **Exemptions** (3.1's `remoteExempt` on a user, `exempt` on a space) are
   recorded with the layer that granted them: a tenant administrator's exemption
   releases a space only from what the tenant added on top of the site; the
@@ -10711,7 +10733,30 @@ Option A (owner, 2026-11-23). A space is stored in one of three modes:
   creator chooses among what is left (`POST /api/spaces` takes
   `"storage": {"mode": "tenant"}`, default the effective value): a mode the
   tenant's rules leave out answers `409 setting_restricted`, one a layer's
-  rule leaves out `409 setting_restricted`.
+  rule leaves out `409 setting_restricted`. What the request brings decides what
+  is meant when it names no mode: with `storage.sync` or `remote` it is `own`,
+  else the effective value. `server` with a remote is `400 invalid`. Nothing is
+  made for a refused request.
+- **When a space is made** (the rule is read for the creator's tenant; the
+  personal space, which is made at sign-in, is always made local and is not
+  asked, so a person whose organisation allows only `own` still has one, and
+  its deadline is the requirement's):
+  - `server`: a space on the server's disk, no remote.
+  - `own`: with `storage.sync` or `remote`, the space follows it from the start;
+    without, it is made local and its owner connects a remote afterwards
+    (unless `server` is not allowed, below).
+  - `tenant`: the tenant's storage target must exist and not be `broken`
+    (`409 no_storage_target` otherwise). Until the server makes spaces at a
+    target (3.6, later), a tenant that has one answers `501 not_implemented`.
+- In `GET /api/settings` a mode that is allowed but cannot be used now is in
+  `missing`, so a client leaves it out. The effective value of a tenant is
+  cached by the settings; `missing` is read when the list is asked for.
+- The allowed modes are, for now, the `options` of the `restrict` rule (a lock
+  leaves its value alone); the separate site-only `storage.modes.available` is
+  not built, so every mode is available until a rule leaves one out. The mode
+  is not stored on the space yet (`spaces.storage_mode` comes with the moves);
+  the rule decides where a new space may be made, and `location` and the
+  `storage.remote` notice keep describing what exists.
 - The mode is stored on the space (`spaces.storage_mode`, with the target for
   `tenant`) and shown in its `storage` block (3.1); the tenant's `usage` row
   keeps the count per mode.
@@ -10721,7 +10766,30 @@ Option A (owner, 2026-11-23). A space is stored in one of three modes:
 - **The remote requirement.** 3.1's `storage.remotes.require` is no longer set
   on its own: it is derived per space, `null` when `server` is among the space's
   allowed modes, otherwise `any` (`github` when the effective `storage.hosts` is
-  only `github.com`). 3.1's checks read the derived value.
+  only `github.com` and GitHub is set up). 3.1's checks read the derived value.
+  Today it is worked out at two points: **for the site** (the modes the site's
+  own `storage.mode` rule allows) it is the value 3.1's queries read, with the
+  grace period, `scope` and overdue read-only behaviour of 3.1 (below); an
+  explicit `storage.remotes.require`, when set, wins; **for an organisation** (the modes its own rules also leave out)
+  it is checked when a space is made (`409 remote_required`, exempt people
+  excepted). A tenant that drops `server` itself does not put its existing
+  spaces under a deadline: the deadline queries are the site's. Such an
+  organisation does not let a space go back to the server either: `DELETE
+  …/remote` of one of its spaces is `409 remote_required` (the exemptions of 3.1
+  excepted), besides the site's own check.
+  The grace period counts from `since`, which is when the **requirement in force**
+  (what is required, `scope` and `storage.hosts`, whether derived or set) last
+  changed, kept with that requirement and settled after a write of
+  `storage.mode`, `storage.remotes.require`, `.scope` or `storage.hosts`, and when
+  the server starts. It is never the time a rule was written: a rule older than
+  the grace period does not make spaces overdue at once, whether it is a later
+  widening of `scope`, clearing a set requirement, or a server started with the
+  rule in place. A requirement that begins, changes what is required, or widens
+  `scope` to `all` starts the period afresh; ending the requirement clears it; a
+  change of `storage.hosts` that leaves what is required alone, and narrowing
+  `scope` to `new`, keep `since`. A change whose settling failed is settled by
+  the next rebuild of the policy. A personal space is not asked about the
+  organisation's modes when its remote is removed (the site's check stays).
   `storage.remotes.scope`, `.graceDays`, the exemptions and
   `storage.localSpaces.maxBytes` keep their meaning and concern `server` spaces.
   A `tenant` space follows a remote and so meets the requirement.
@@ -11592,7 +11660,9 @@ exist, a `before` that is not a time, or a `dry_run` that is not a boolean.
 | `takeover_required` | 403 | an administrator who is not a member of the space asked for what only taking it over gives (see "Taking over a space") |
 | `confirm_required` | 409 | a change of a feature, a plan or its assignment that stops something in use (`features.domains`, `features.ownSso`), now or at a later start or end of a rule, without the confirmation of `change_capabilities`; turning a domain's join off, or removing the domain, while requests to join by it wait, without the confirmation of `domain_join_off`; with `plan` |
 | `plan_in_use` | 409 | deleting a plan that tenants use; with `tenants` |
-| `partial_unsupported` | 409 | connecting a space to a host that cannot sync partially while `storage.partial.unsupported` is `refuse`; with `host` |
+| `partial_unsupported` | 409 | connecting a space to a host that cannot sync partially while `storage.partial.unsupported` is `refuse`; with `host` and `provider` |
+| `no_storage_target` | 409 | making a space in `tenant` mode when the organisation has no usable storage target |
+| `not_implemented` | 501 | making a space at a storage target, which the server does not do yet |
 | `storage_target_error` | 502 | the storage target refused to make a space's repository; with `reason`, `status` |
 | `rate_limited` | 429 | as today, also a domain check within its cooldown, with `Retry-After` |
 | `domain_claimed` | 409 | another tenant holds the verified claim |

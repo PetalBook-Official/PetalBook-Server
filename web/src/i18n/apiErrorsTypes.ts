@@ -9,6 +9,8 @@ export interface ErrorParams {
   // What it is about: a file name, a provider, a permission an App lacks, a request header, a field.
   name?: string
   provider?: string
+  // The host a refused connection is about (409 partial_unsupported).
+  host?: string
   permission?: string
   header?: string
   field?: string

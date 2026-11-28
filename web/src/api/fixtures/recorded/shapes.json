@@ -2659,6 +2659,9 @@
     "effective": "boolean|string",
     "key": "string",
     "locked?": "boolean",
+    "missing?": [
+     "string"
+    ],
     "space?": {
      "canChange": "boolean",
      "inEffect": "boolean",
